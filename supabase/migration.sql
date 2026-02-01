@@ -155,3 +155,31 @@ CREATE POLICY "Enable insert for service role" ON reliability_scores FOR INSERT 
 CREATE POLICY "Enable update for service role" ON reliability_scores FOR UPDATE USING (true);
 CREATE POLICY "Enable insert for service role" ON youtube_reviews FOR INSERT WITH CHECK (true);
 CREATE POLICY "Enable insert for service role" ON forum_discussions FOR INSERT WITH CHECK (true);
+
+-- News cache table - store fetched news to reduce API calls
+CREATE TABLE IF NOT EXISTS news_cache (
+  id TEXT PRIMARY KEY DEFAULT 'latest',
+  articles JSONB NOT NULL,
+  fetched_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE POLICY "Enable read access for all users" ON news_cache FOR SELECT USING (true);
+CREATE POLICY "Enable insert for service role" ON news_cache FOR INSERT WITH CHECK (true);
+CREATE POLICY "Enable update for service role" ON news_cache FOR UPDATE USING (true);
+
+-- Vehicle specs cache table - store manufacturer specs
+CREATE TABLE IF NOT EXISTS vehicle_specs_cache (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  year INTEGER NOT NULL,
+  make TEXT NOT NULL,
+  model TEXT NOT NULL,
+  specs JSONB NOT NULL,
+  variants JSONB,
+  fetched_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(year, make, model)
+);
+
+CREATE INDEX IF NOT EXISTS idx_specs_cache_vehicle ON vehicle_specs_cache(year, make, model);
+CREATE POLICY "Enable read access for all users" ON vehicle_specs_cache FOR SELECT USING (true);
+CREATE POLICY "Enable insert for service role" ON vehicle_specs_cache FOR INSERT WITH CHECK (true);
+CREATE POLICY "Enable update for service role" ON vehicle_specs_cache FOR UPDATE USING (true);

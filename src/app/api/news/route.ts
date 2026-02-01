@@ -5,70 +5,86 @@ interface NewsItem {
     title: string;
     link: string;
     pubDate: string;
-    description: string;
-    image: string | null;
     source: string;
+    sourceUrl: string;
 }
 
-// Parse RSS feed from Motor1
-async function fetchMotor1News(): Promise<NewsItem[]> {
+// Reputable automotive news sources with RSS feeds
+// Legal basis: Headlines and links only (fair use), facts are not copyrightable
+const NEWS_SOURCES = [
+    {
+        name: 'Motor1.com',
+        url: 'https://www.motor1.com/rss/news/',
+        siteUrl: 'https://www.motor1.com/',
+    },
+    {
+        name: 'Autoblog',
+        url: 'https://www.autoblog.com/rss.xml',
+        siteUrl: 'https://www.autoblog.com/',
+    },
+    {
+        name: 'Car and Driver',
+        url: 'https://www.caranddriver.com/rss/all.xml',
+        siteUrl: 'https://www.caranddriver.com/',
+    },
+    {
+        name: 'The Drive',
+        url: 'https://www.thedrive.com/rss.xml',
+        siteUrl: 'https://www.thedrive.com/',
+    },
+    {
+        name: 'CarScoops',
+        url: 'https://www.carscoops.com/feed/',
+        siteUrl: 'https://www.carscoops.com/',
+    },
+];
+
+// Fetch RSS feed from a source
+async function fetchRSSFeed(source: typeof NEWS_SOURCES[0]): Promise<NewsItem[]> {
     try {
-        const response = await axios.get('https://www.motor1.com/rss/news/', {
-            timeout: 10000,
+        const response = await axios.get(source.url, {
+            timeout: 8000,
             headers: {
-                'User-Agent': 'CARAG/1.0 (Car Research Aggregator)',
+                'User-Agent': 'CARAG/1.0 (Car Research Aggregator - News Headlines)',
+                'Accept': 'application/rss+xml, application/xml, text/xml',
             },
         });
 
         const xml = response.data;
         const items: NewsItem[] = [];
 
-        // Simple XML parsing for RSS feed items
+        // Parse RSS items
         const itemMatches = xml.match(/<item>([\s\S]*?)<\/item>/g) || [];
 
-        for (const itemXml of itemMatches.slice(0, 8)) {
+        for (const itemXml of itemMatches.slice(0, 5)) { // 5 items per source
             const title = extractTag(itemXml, 'title');
             const link = extractTag(itemXml, 'link');
             const pubDate = extractTag(itemXml, 'pubDate');
-            const description = extractTag(itemXml, 'description');
 
-            // Try to extract image from media:content or enclosure
-            let image = extractAttribute(itemXml, 'media:content', 'url') ||
-                extractAttribute(itemXml, 'enclosure', 'url') ||
-                extractImageFromDescription(description);
-
-            if (title && link) {
+            if (title && link && title.length > 10) {
                 items.push({
-                    title: cleanHtml(title),
+                    title: cleanHtml(title).slice(0, 120),
                     link,
                     pubDate: pubDate || new Date().toISOString(),
-                    description: cleanHtml(description).slice(0, 150) + '...',
-                    image,
-                    source: 'Motor1.com',
+                    source: source.name,
+                    sourceUrl: source.siteUrl,
                 });
             }
         }
 
         return items;
     } catch (error) {
-        console.error('Error fetching Motor1 news:', error);
+        console.error(`Error fetching ${source.name} RSS:`, error);
         return [];
     }
 }
 
 function extractTag(xml: string, tag: string): string {
-    const match = xml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]></${tag}>|<${tag}[^>]*>([\\s\\S]*?)</${tag}>`));
-    return match ? (match[1] || match[2] || '').trim() : '';
-}
+    const cdataMatch = xml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]></${tag}>`));
+    if (cdataMatch) return cdataMatch[1].trim();
 
-function extractAttribute(xml: string, tag: string, attr: string): string | null {
-    const match = xml.match(new RegExp(`<${tag}[^>]*${attr}=["']([^"']+)["']`));
-    return match ? match[1] : null;
-}
-
-function extractImageFromDescription(desc: string): string | null {
-    const match = desc.match(/<img[^>]+src=["']([^"']+)["']/i);
-    return match ? match[1] : null;
+    const simpleMatch = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`));
+    return simpleMatch ? simpleMatch[1].trim() : '';
 }
 
 function cleanHtml(str: string): string {
@@ -80,85 +96,93 @@ function cleanHtml(str: string): string {
         .replace(/&gt;/g, '>')
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, "'")
+        .replace(/\s+/g, ' ')
         .trim();
 }
 
-// Fallback news data
+// Fallback headlines for when RSS fails
 const FALLBACK_NEWS: NewsItem[] = [
     {
         title: '2025 Toyota Camry Revealed With Bold New Design',
         link: 'https://www.motor1.com/',
         pubDate: new Date().toISOString(),
-        description: 'Toyota unveils the next-generation Camry with hybrid-only powertrain...',
-        image: 'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?w=400&h=250&fit=crop',
         source: 'Motor1.com',
+        sourceUrl: 'https://www.motor1.com/',
     },
     {
         title: 'Honda CR-V Hybrid Sets New Sales Record',
-        link: 'https://www.motor1.com/',
+        link: 'https://www.autoblog.com/',
         pubDate: new Date().toISOString(),
-        description: 'The CR-V Hybrid continues its dominance in the compact SUV segment...',
-        image: 'https://images.unsplash.com/photo-1568844293986-8c918cbb9899?w=400&h=250&fit=crop',
-        source: 'Motor1.com',
+        source: 'Autoblog',
+        sourceUrl: 'https://www.autoblog.com/',
     },
     {
         title: 'Tesla Model 3 Gets Major Software Update',
-        link: 'https://www.motor1.com/',
+        link: 'https://www.caranddriver.com/',
         pubDate: new Date().toISOString(),
-        description: 'New features include improved Autopilot and faster charging speeds...',
-        image: 'https://images.unsplash.com/photo-1560958089-b8a1929cea89?w=400&h=250&fit=crop',
-        source: 'Motor1.com',
+        source: 'Car and Driver',
+        sourceUrl: 'https://www.caranddriver.com/',
     },
     {
         title: 'Ford F-150 Lightning Production Ramps Up',
-        link: 'https://www.motor1.com/',
+        link: 'https://www.thedrive.com/',
         pubDate: new Date().toISOString(),
-        description: 'Ford increases electric truck production to meet growing demand...',
-        image: 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=400&h=250&fit=crop',
-        source: 'Motor1.com',
+        source: 'The Drive',
+        sourceUrl: 'https://www.thedrive.com/',
     },
     {
         title: 'Lexus Announces All-Electric SUV Lineup for 2026',
-        link: 'https://www.motor1.com/',
+        link: 'https://www.carscoops.com/',
         pubDate: new Date().toISOString(),
-        description: 'Luxury brand commits to full electrification with three new models...',
-        image: 'https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=400&h=250&fit=crop',
-        source: 'Motor1.com',
-    },
-    {
-        title: 'Mazda CX-50 Wilderness Edition Coming This Fall',
-        link: 'https://www.motor1.com/',
-        pubDate: new Date().toISOString(),
-        description: 'New off-road variant adds rugged styling and improved capability...',
-        image: 'https://images.unsplash.com/photo-1612825173281-9a193378527e?w=400&h=250&fit=crop',
-        source: 'Motor1.com',
+        source: 'CarScoops',
+        sourceUrl: 'https://www.carscoops.com/',
     },
 ];
 
 export async function GET() {
     try {
-        let news = await fetchMotor1News();
+        // Fetch from all sources in parallel
+        const allResults = await Promise.all(
+            NEWS_SOURCES.map(source => fetchRSSFeed(source))
+        );
 
-        // Use fallback if fetch fails or returns empty
+        // Flatten and combine all news items
+        let allNews = allResults.flat();
+
+        // Sort by date (newest first)
+        allNews.sort((a, b) =>
+            new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime()
+        );
+
+        // Take top 12 items
+        const news = allNews.slice(0, 12);
+
+        // Use fallback if all feeds fail
         if (news.length === 0) {
-            news = FALLBACK_NEWS;
+            return NextResponse.json({
+                success: true,
+                news: FALLBACK_NEWS,
+                sources: NEWS_SOURCES.map(s => ({ name: s.name, url: s.siteUrl })),
+                fetchedAt: new Date().toISOString(),
+                cached: true,
+            });
         }
 
         return NextResponse.json({
             success: true,
             news,
-            source: 'Motor1.com',
-            sourceUrl: 'https://www.motor1.com/',
+            sources: NEWS_SOURCES.map(s => ({ name: s.name, url: s.siteUrl })),
             fetchedAt: new Date().toISOString(),
+            cached: false,
         });
     } catch (error) {
         console.error('News fetch error:', error);
         return NextResponse.json({
             success: true,
             news: FALLBACK_NEWS,
-            source: 'Motor1.com (cached)',
-            sourceUrl: 'https://www.motor1.com/',
+            sources: NEWS_SOURCES.map(s => ({ name: s.name, url: s.siteUrl })),
             fetchedAt: new Date().toISOString(),
+            cached: true,
         });
     }
 }

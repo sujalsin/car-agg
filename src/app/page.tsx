@@ -572,18 +572,16 @@ export default function HomePage() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-xl font-bold">Auto News</h2>
-              <p className="text-sm text-muted-foreground">Latest from the automotive world</p>
+              <p className="text-sm text-muted-foreground">Latest from top automotive sources</p>
             </div>
-            <a
-              href="https://www.motor1.com/news/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600"
-            >
-              <Newspaper className="w-4 h-4" />
-              Motor1.com
-              <ExternalLink className="w-3 h-3" />
-            </a>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Sources:</span>
+              <span className="text-blue-500">Motor1</span>
+              <span>•</span>
+              <span className="text-blue-500">Autoblog</span>
+              <span>•</span>
+              <span className="text-blue-500">Car and Driver</span>
+            </div>
           </div>
 
           {newsLoading ? (

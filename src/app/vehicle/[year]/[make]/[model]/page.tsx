@@ -36,6 +36,7 @@ interface VehicleData {
         cityMpg: number;
         highwayMpg: number;
         combinedMpg: number;
+        annualFuelCost: number | null;
         realWorldMpg: number | null;
         realWorldSampleSize: number | null;
     }>;
@@ -147,6 +148,7 @@ export default function VehiclePage() {
 
     const tabs = [
         { id: 'overview', label: 'Overview' },
+        { id: 'specs', label: 'Specs & Trims' },
         { id: 'safety', label: 'Safety' },
         { id: 'fuel', label: 'Fuel Economy' },
         { id: 'cost', label: 'Ownership Cost' },
@@ -414,6 +416,207 @@ export default function VehiclePage() {
                                 </div>
                             )}
                         </div>
+                    </div>
+                )}
+
+                {/* Specs & Trims Tab */}
+                {activeTab === 'specs' && (
+                    <div className="max-w-5xl animate-fadeIn">
+                        <h2 className="text-xl font-semibold mb-2">Full Specifications</h2>
+                        <p className="text-muted-foreground mb-6">Complete technical details for {year} {make} {model}</p>
+
+                        {/* Key Specs Overview */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                            <div className="bg-card border rounded-xl p-4 text-center">
+                                <p className="text-3xl font-bold text-blue-500">
+                                    {data.variants[0]?.engine?.match(/(\d+\.?\d*)\s?L/)?.[1] || data.variants[0]?.engine?.match(/(\d+)\s?cyl/)?.[1] || '--'}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {data.variants[0]?.engine?.includes('L') ? 'Liters' : 'Cylinders'}
+                                </p>
+                            </div>
+                            <div className="bg-card border rounded-xl p-4 text-center">
+                                <p className="text-3xl font-bold text-green-500">
+                                    {data.variants.length > 0 ? Math.max(...data.variants.map(v => v.combinedMpg || 0)) : '--'}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">Best MPG</p>
+                            </div>
+                            <div className="bg-card border rounded-xl p-4 text-center">
+                                <p className="text-3xl font-bold text-purple-500">
+                                    {[...new Set(data.variants.map(v => v.drivetrain))].length || 1}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">Drive Options</p>
+                            </div>
+                            <div className="bg-card border rounded-xl p-4 text-center">
+                                <p className="text-3xl font-bold text-orange-500">{data.variants.length || 0}</p>
+                                <p className="text-xs text-muted-foreground mt-1">Configurations</p>
+                            </div>
+                        </div>
+
+                        {data.variants.length > 0 ? (
+                            <div className="space-y-6">
+                                {/* Engine & Performance */}
+                                <div className="bg-card border rounded-xl overflow-hidden">
+                                    <div className="bg-muted/50 px-5 py-3 border-b">
+                                        <h3 className="font-semibold flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                                            Engine & Performance
+                                        </h3>
+                                    </div>
+                                    <div className="p-5">
+                                        <div className="grid md:grid-cols-2 gap-x-8 gap-y-3">
+                                            <div className="flex justify-between py-2 border-b border-dashed">
+                                                <span className="text-muted-foreground">Engine Options</span>
+                                                <span className="font-medium text-right max-w-[60%]">
+                                                    {[...new Set(data.variants.map(v => v.engine))].filter(Boolean).join(' / ') || '--'}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between py-2 border-b border-dashed">
+                                                <span className="text-muted-foreground">Fuel Type</span>
+                                                <span className="font-medium text-right">
+                                                    {[...new Set(data.variants.map(v => v.fuelType))].filter(Boolean).join(', ') || '--'}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between py-2 border-b border-dashed">
+                                                <span className="text-muted-foreground">Transmission</span>
+                                                <span className="font-medium text-right max-w-[60%] truncate">
+                                                    {[...new Set(data.variants.map(v => v.trim?.split(',')[0]))].filter(Boolean).slice(0, 3).join(' / ') || '--'}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between py-2 border-b border-dashed">
+                                                <span className="text-muted-foreground">Drivetrain</span>
+                                                <span className="font-medium text-right">
+                                                    {[...new Set(data.variants.map(v => v.drivetrain))].filter(Boolean).join(' / ') || '--'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Fuel Economy Summary */}
+                                <div className="bg-card border rounded-xl overflow-hidden">
+                                    <div className="bg-muted/50 px-5 py-3 border-b">
+                                        <h3 className="font-semibold flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                            Fuel Economy (EPA Estimated)
+                                        </h3>
+                                    </div>
+                                    <div className="p-5">
+                                        <div className="grid md:grid-cols-3 gap-4">
+                                            <div className="text-center p-4 bg-muted/30 rounded-lg">
+                                                <p className="text-2xl font-bold">
+                                                    {Math.min(...data.variants.map(v => v.cityMpg || 999).filter(n => n < 999))} - {Math.max(...data.variants.map(v => v.cityMpg || 0))}
+                                                </p>
+                                                <p className="text-sm text-muted-foreground">City MPG</p>
+                                            </div>
+                                            <div className="text-center p-4 bg-muted/30 rounded-lg">
+                                                <p className="text-2xl font-bold">
+                                                    {Math.min(...data.variants.map(v => v.highwayMpg || 999).filter(n => n < 999))} - {Math.max(...data.variants.map(v => v.highwayMpg || 0))}
+                                                </p>
+                                                <p className="text-sm text-muted-foreground">Highway MPG</p>
+                                            </div>
+                                            <div className="text-center p-4 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                                                <p className="text-2xl font-bold text-green-700 dark:text-green-400">
+                                                    {Math.min(...data.variants.map(v => v.combinedMpg || 999).filter(n => n < 999))} - {Math.max(...data.variants.map(v => v.combinedMpg || 0))}
+                                                </p>
+                                                <p className="text-sm text-green-600 dark:text-green-500">Combined MPG</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* All Configurations Table */}
+                                <div className="bg-card border rounded-xl overflow-hidden">
+                                    <div className="bg-muted/50 px-5 py-3 border-b">
+                                        <h3 className="font-semibold flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                            All Configurations ({data.variants.length})
+                                        </h3>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead className="bg-muted/50 border-b">
+                                                <tr>
+                                                    <th className="text-left p-4 font-semibold text-sm">Configuration</th>
+                                                    <th className="text-center p-4 font-semibold text-sm">Drivetrain</th>
+                                                    <th className="text-center p-4 font-semibold text-sm">City MPG</th>
+                                                    <th className="text-center p-4 font-semibold text-sm">Hwy MPG</th>
+                                                    <th className="text-center p-4 font-semibold text-sm">Combined</th>
+                                                    <th className="text-center p-4 font-semibold text-sm">Fuel Cost/yr</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y">
+                                                {data.variants.map((variant) => (
+                                                    <tr key={variant.id} className="hover:bg-muted/30 transition-colors">
+                                                        <td className="p-4">
+                                                            <p className="font-medium text-sm">{variant.trim || 'Base'}</p>
+                                                            <p className="text-xs text-muted-foreground">{variant.engine || 'Standard'}</p>
+                                                        </td>
+                                                        <td className="text-center p-4 text-sm">{variant.drivetrain || '--'}</td>
+                                                        <td className="text-center p-4 text-sm font-medium">{variant.cityMpg || '--'}</td>
+                                                        <td className="text-center p-4 text-sm font-medium">{variant.highwayMpg || '--'}</td>
+                                                        <td className="text-center p-4">
+                                                            <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-muted font-bold text-sm">
+                                                                {variant.combinedMpg || '--'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="text-center p-4 text-sm">
+                                                            {variant.annualFuelCost ? `$${variant.annualFuelCost.toLocaleString()}` : '--'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                {/* Quick Specs Summary */}
+                                <div className="grid md:grid-cols-3 gap-4">
+                                    <div className="bg-card border rounded-xl p-5">
+                                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                            Engine Options
+                                        </h3>
+                                        <div className="space-y-2">
+                                            {[...new Set(data.variants.map(v => v.engine))].filter(Boolean).slice(0, 5).map((engine, i) => (
+                                                <p key={i} className="text-sm text-muted-foreground">{engine}</p>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="bg-card border rounded-xl p-5">
+                                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                            Drivetrain Options
+                                        </h3>
+                                        <div className="space-y-2">
+                                            {[...new Set(data.variants.map(v => v.drivetrain))].filter(Boolean).map((drive, i) => (
+                                                <p key={i} className="text-sm text-muted-foreground">{drive}</p>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="bg-card border rounded-xl p-5">
+                                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                                            Fuel Types
+                                        </h3>
+                                        <div className="space-y-2">
+                                            {[...new Set(data.variants.map(v => v.fuelType))].filter(Boolean).map((fuel, i) => (
+                                                <p key={i} className="text-sm text-muted-foreground">{fuel}</p>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <p className="text-xs text-muted-foreground text-center">
+                                    Data from EPA FuelEconomy.gov. Actual fuel economy will vary based on driving conditions.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="text-center py-12 bg-muted/30 rounded-xl">
+                                <p className="text-muted-foreground">No variant data available for this vehicle.</p>
+                                <p className="text-sm text-muted-foreground mt-2">Try searching for a different model year.</p>
+                            </div>
+                        )}
                     </div>
                 )}
 

@@ -14,7 +14,12 @@ import {
   AlertTriangle,
   ChevronRight,
   ExternalLink,
-  Info
+  Info,
+  Hash,
+  Newspaper,
+  CheckCircle,
+  XCircle,
+  Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -41,8 +46,32 @@ interface RecentRecall {
   date: string;
 }
 
+interface VehicleSpec {
+  make: string;
+  model: string;
+  year: number;
+  vehicleType: string;
+  bodyClass: string;
+  engineCylinders: string;
+  engineDisplacement: string;
+  fuelType: string;
+  driveType: string;
+  transmissionStyle: string;
+  plantCountry: string;
+}
+
+interface NewsItem {
+  title: string;
+  link: string;
+  pubDate: string;
+  description: string;
+  image: string | null;
+  source: string;
+}
+
 export default function HomePage() {
   const router = useRouter();
+  const [searchMode, setSearchMode] = useState<'vehicle' | 'vin'>('vehicle');
   const [year, setYear] = useState('');
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
@@ -52,6 +81,16 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [recentRecalls, setRecentRecalls] = useState<RecentRecall[]>([]);
   const [recentSearches, setRecentSearches] = useState<Array<{ year: number, make: string, model: string }>>([]);
+
+  // VIN decoder state
+  const [vin, setVin] = useState('');
+  const [vinLoading, setVinLoading] = useState(false);
+  const [vinResult, setVinResult] = useState<VehicleSpec | null>(null);
+  const [vinError, setVinError] = useState('');
+
+  // News state
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [newsLoading, setNewsLoading] = useState(true);;
 
   // Generate years from current year down to 1985
   useEffect(() => {
@@ -69,6 +108,9 @@ export default function HomePage() {
 
     // Fetch recent recalls
     fetchRecentRecalls();
+
+    // Fetch news
+    fetchNews();
   }, []);
 
   const fetchRecentRecalls = async () => {
@@ -87,6 +129,20 @@ export default function HomePage() {
         { make: 'Tesla', model: 'Model Y', year: '2020-2024', component: 'Steering', date: '2024' },
         { make: 'Hyundai', model: 'Tucson', year: '2022-2024', component: 'Airbags', date: '2024' },
       ]);
+    }
+  };
+
+  const fetchNews = async () => {
+    try {
+      const response = await fetch('/api/news');
+      if (response.ok) {
+        const data = await response.json();
+        setNews(data.news || []);
+      }
+    } catch (e) {
+      console.error('Error fetching news:', e);
+    } finally {
+      setNewsLoading(false);
     }
   };
 
@@ -133,6 +189,38 @@ export default function HomePage() {
     router.push(`/vehicle/${y}/${encodeURIComponent(mk)}/${encodeURIComponent(md)}`);
   };
 
+  const handleVinDecode = async () => {
+    if (!vin || vin.length !== 17) {
+      setVinError('VIN must be exactly 17 characters');
+      return;
+    }
+
+    setVinLoading(true);
+    setVinError('');
+    setVinResult(null);
+
+    try {
+      const response = await fetch(`/api/vin?vin=${encodeURIComponent(vin)}`);
+      const data = await response.json();
+
+      if (data.success && data.vehicle) {
+        setVinResult(data.vehicle);
+      } else {
+        setVinError(data.error || 'Could not decode VIN');
+      }
+    } catch (e) {
+      setVinError('Failed to decode VIN. Please try again.');
+    } finally {
+      setVinLoading(false);
+    }
+  };
+
+  const handleViewVinReport = () => {
+    if (vinResult && vinResult.year && vinResult.make && vinResult.model) {
+      navigateToVehicle(vinResult.year, vinResult.make, vinResult.model);
+    }
+  };
+
   const getScoreColor = (score: number) => {
     if (score >= 9) return 'text-green-500';
     if (score >= 7) return 'text-emerald-500';
@@ -159,8 +247,10 @@ export default function HomePage() {
             <span className="font-semibold text-lg">CARAG</span>
           </div>
           <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
+            <a href="/compare" className="hover:text-foreground transition-colors">Compare</a>
             <a href="#trending" className="hover:text-foreground transition-colors">Trending</a>
             <a href="#reliable" className="hover:text-foreground transition-colors">Most Reliable</a>
+            <a href="#news" className="hover:text-foreground transition-colors">News</a>
             <a href="#methodology" className="hover:text-foreground transition-colors">Methodology</a>
           </nav>
         </div>
@@ -200,62 +290,161 @@ export default function HomePage() {
                 Get objective reliability data from NHTSA, EPA, and real owners—not paid reviewers.
               </p>
 
-              {/* Compact Search Form */}
-              <div className="flex flex-wrap gap-2">
-                <select
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  className="h-10 px-3 rounded-lg border border-input bg-background text-sm focus-ring min-w-[100px]"
-                >
-                  <option value="">Year</option>
-                  {years.map((y) => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-
-                <select
-                  value={make}
-                  onChange={(e) => setMake(e.target.value)}
-                  disabled={!year}
-                  className="h-10 px-3 rounded-lg border border-input bg-background text-sm focus-ring min-w-[120px] disabled:opacity-50"
-                >
-                  <option value="">Make</option>
-                  {makes.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-
-                <select
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  disabled={!make}
-                  className="h-10 px-3 rounded-lg border border-input bg-background text-sm focus-ring min-w-[140px] disabled:opacity-50"
-                >
-                  <option value="">Model</option>
-                  {models.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-
+              {/* Search Mode Tabs */}
+              <div className="flex gap-1 mb-3">
                 <button
-                  onClick={handleSearch}
-                  disabled={!year || !make || !model || loading}
+                  onClick={() => { setSearchMode('vehicle'); setVinResult(null); setVinError(''); }}
                   className={cn(
-                    'h-10 px-5 rounded-lg font-medium flex items-center gap-2 transition-all text-sm',
-                    'bg-foreground text-background hover:bg-foreground/90',
-                    'disabled:opacity-50 disabled:cursor-not-allowed'
+                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5',
+                    searchMode === 'vehicle' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:text-foreground'
                   )}
                 >
-                  {loading ? (
-                    <div className="w-4 h-4 border-2 border-background/30 border-t-background rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <Search className="w-4 h-4" />
-                      Search
-                    </>
+                  <Car className="w-3.5 h-3.5" />
+                  Year / Make / Model
+                </button>
+                <button
+                  onClick={() => { setSearchMode('vin'); }}
+                  className={cn(
+                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5',
+                    searchMode === 'vin' ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:text-foreground'
                   )}
+                >
+                  <Hash className="w-3.5 h-3.5" />
+                  VIN Lookup
                 </button>
               </div>
+
+              {/* Vehicle Search Form */}
+              {searchMode === 'vehicle' && (
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    value={year}
+                    onChange={(e) => setYear(e.target.value)}
+                    className="h-10 px-3 rounded-lg border border-input bg-background text-sm focus-ring min-w-[100px]"
+                  >
+                    <option value="">Year</option>
+                    {years.map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={make}
+                    onChange={(e) => setMake(e.target.value)}
+                    disabled={!year}
+                    className="h-10 px-3 rounded-lg border border-input bg-background text-sm focus-ring min-w-[120px] disabled:opacity-50"
+                  >
+                    <option value="">Make</option>
+                    {makes.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    disabled={!make}
+                    className="h-10 px-3 rounded-lg border border-input bg-background text-sm focus-ring min-w-[140px] disabled:opacity-50"
+                  >
+                    <option value="">Model</option>
+                    {models.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={handleSearch}
+                    disabled={!year || !make || !model || loading}
+                    className={cn(
+                      'h-10 px-5 rounded-lg font-medium flex items-center gap-2 transition-all text-sm',
+                      'bg-foreground text-background hover:bg-foreground/90',
+                      'disabled:opacity-50 disabled:cursor-not-allowed'
+                    )}
+                  >
+                    {loading ? (
+                      <div className="w-4 h-4 border-2 border-background/30 border-t-background rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Search className="w-4 h-4" />
+                        Search
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* VIN Decoder Form */}
+              {searchMode === 'vin' && (
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={vin}
+                      onChange={(e) => setVin(e.target.value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, ''))}
+                      placeholder="Enter 17-character VIN"
+                      maxLength={17}
+                      className="h-10 px-3 rounded-lg border border-input bg-background text-sm focus-ring flex-1 font-mono tracking-wider"
+                    />
+                    <button
+                      onClick={handleVinDecode}
+                      disabled={vin.length !== 17 || vinLoading}
+                      className={cn(
+                        'h-10 px-5 rounded-lg font-medium flex items-center gap-2 transition-all text-sm',
+                        'bg-foreground text-background hover:bg-foreground/90',
+                        'disabled:opacity-50 disabled:cursor-not-allowed'
+                      )}
+                    >
+                      {vinLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Search className="w-4 h-4" />
+                          Decode
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {vin.length}/17 characters • Source: NHTSA VPIC
+                  </p>
+
+                  {/* VIN Error */}
+                  {vinError && (
+                    <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/30 rounded-lg text-red-600 dark:text-red-400 text-sm">
+                      <XCircle className="w-4 h-4" />
+                      {vinError}
+                    </div>
+                  )}
+
+                  {/* VIN Result */}
+                  {vinResult && (
+                    <div className="p-4 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200 dark:border-green-800 space-y-3">
+                      <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+                        <CheckCircle className="w-4 h-4" />
+                        <span className="font-medium">Vehicle Found!</span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+                        <div><span className="text-muted-foreground">Year:</span> <strong>{vinResult.year}</strong></div>
+                        <div><span className="text-muted-foreground">Make:</span> <strong>{vinResult.make}</strong></div>
+                        <div><span className="text-muted-foreground">Model:</span> <strong>{vinResult.model}</strong></div>
+                        {vinResult.bodyClass && <div><span className="text-muted-foreground">Body:</span> <strong>{vinResult.bodyClass}</strong></div>}
+                        {vinResult.engineCylinders && <div><span className="text-muted-foreground">Engine:</span> <strong>{vinResult.engineCylinders} cyl</strong></div>}
+                        {vinResult.fuelType && <div><span className="text-muted-foreground">Fuel:</span> <strong>{vinResult.fuelType}</strong></div>}
+                        {vinResult.driveType && <div><span className="text-muted-foreground">Drive:</span> <strong>{vinResult.driveType}</strong></div>}
+                        {vinResult.transmissionStyle && <div><span className="text-muted-foreground">Trans:</span> <strong>{vinResult.transmissionStyle}</strong></div>}
+                        {vinResult.plantCountry && <div><span className="text-muted-foreground">Made in:</span> <strong>{vinResult.plantCountry}</strong></div>}
+                      </div>
+                      <button
+                        onClick={handleViewVinReport}
+                        className="w-full mt-2 h-10 px-4 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                        View Full Reliability Report
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Right - Quick Stats */}
@@ -374,6 +563,74 @@ export default function HomePage() {
               </button>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Auto News Section */}
+      <section id="news" className="py-10 px-6">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-bold">Auto News</h2>
+              <p className="text-sm text-muted-foreground">Latest from the automotive world</p>
+            </div>
+            <a
+              href="https://www.motor1.com/news/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600"
+            >
+              <Newspaper className="w-4 h-4" />
+              Motor1.com
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+
+          {newsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : news.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {news.slice(0, 6).map((item, index) => (
+                <a
+                  key={index}
+                  href={item.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group bg-card border rounded-xl overflow-hidden card-hover"
+                >
+                  {item.image && (
+                    <div className="aspect-video relative bg-muted overflow-hidden">
+                      <img
+                        src={item.image}
+                        alt={item.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    </div>
+                  )}
+                  <div className="p-4">
+                    <h3 className="font-semibold text-sm line-clamp-2 mb-3 group-hover:text-blue-500 transition-colors">
+                      {item.title}
+                    </h3>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <ExternalLink className="w-3 h-3" />
+                        {item.source}
+                      </span>
+                      <span>{new Date(item.pubDate).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-muted/30 rounded-xl">
+              <Newspaper className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+              <p className="text-sm text-muted-foreground">No news available at the moment</p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -511,13 +768,20 @@ export default function HomePage() {
               </a>
             </div>
           </div>
-          <div className="pt-4 border-t border-border/50 text-xs text-muted-foreground text-center">
+          <div className="pt-4 border-t border-border/50 text-xs text-muted-foreground text-center space-y-2">
             <p>
               All complaint and recall data is sourced from the National Highway Traffic Safety Administration (NHTSA),
               a U.S. government agency. This data is public domain under 17 U.S.C. § 105. CARAG is not affiliated with
               NHTSA, the EPA, or any vehicle manufacturer. Reliability scores are calculated algorithmically from
               publicly available data.
             </p>
+            <div className="flex items-center justify-center gap-4">
+              <a href="/terms" className="hover:text-foreground transition-colors">Terms of Service</a>
+              <span>•</span>
+              <a href="/disclaimer" className="hover:text-foreground transition-colors">Disclaimer</a>
+              <span>•</span>
+              <span>© 2026 CARAG</span>
+            </div>
           </div>
         </div>
       </footer>

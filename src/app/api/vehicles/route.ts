@@ -4,6 +4,7 @@ import { getVehicles, getRealWorldMPG, getFuelPrices } from '@/services/epa';
 import { searchCarReviews, getVideoDetails } from '@/services/youtube';
 import { calculateReliabilityScore } from '@/lib/reliability-score';
 import { calculateOwnershipCost } from '@/lib/ownership-cost';
+import { aggregateCommonProblems, generateProsAndCons, CommonProblem, ProsConsSummary } from '@/lib/common-problems';
 
 export interface VehicleData {
     year: number;
@@ -77,6 +78,8 @@ export interface VehicleData {
         publishedAt: string;
         duration: string;
     }>;
+    commonProblems: CommonProblem[];
+    prosAndCons: ProsConsSummary;
 }
 
 export async function GET(request: NextRequest) {
@@ -101,11 +104,14 @@ export async function GET(request: NextRequest) {
     }
 
     try {
+        // Normalize make name for EPA (title case)
+        const normalizedMake = make.charAt(0).toUpperCase() + make.slice(1).toLowerCase();
+
         // Fetch data from all sources in parallel
         const [complaints, recalls, epaVehicles, fuelPrices, youtubeResults] = await Promise.all([
             getComplaints(yearNum, make, model),
             getRecalls(yearNum, make, model),
-            getVehicles(yearNum, make, model),
+            getVehicles(yearNum, normalizedMake, model),
             getFuelPrices(),
             searchCarReviews(yearNum, make, model, 10),
         ]);
@@ -198,6 +204,14 @@ export async function GET(request: NextRequest) {
                 publishedAt: v.publishedAt,
                 duration: v.duration,
             })),
+            commonProblems: aggregateCommonProblems(complaints),
+            prosAndCons: generateProsAndCons(
+                reliabilityScore.overall,
+                complaints.length,
+                recalls.length,
+                variantsWithRealMpg[0]?.combinedMpg || null,
+                aggregateCommonProblems(complaints)
+            ),
         };
 
         return NextResponse.json(response);

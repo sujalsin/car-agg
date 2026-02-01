@@ -133,14 +133,38 @@ export async function getVehicleById(id: string): Promise<EPAVehicle | null> {
     }
 }
 
-// Get all vehicles for a year, make, model
+// Get all vehicles for a year, make, model with fuzzy matching
 export async function getVehicles(
     year: number,
     make: string,
     model: string
 ): Promise<EPAVehicle[]> {
     try {
-        const options = await getVehicleOptions(year, make, model);
+        // First, try exact match
+        let options = await getVehicleOptions(year, make, model);
+
+        // If no exact match, try to find similar models
+        if (options.length === 0) {
+            const allModels = await getModels(year, make);
+
+            // Find models that contain our search term or vice versa
+            const modelLower = model.toLowerCase();
+            const matchingModels = allModels.filter(m => {
+                const mLower = m.toLowerCase();
+                return mLower.includes(modelLower) ||
+                    modelLower.includes(mLower) ||
+                    mLower.split(' ')[0] === modelLower.split(' ')[0]; // Match first word
+            });
+
+            // Get options for all matching models
+            const allOptions: Array<{ id: string; text: string }> = [];
+            for (const matchModel of matchingModels.slice(0, 3)) { // Limit to 3 best matches
+                const modelOptions = await getVehicleOptions(year, make, matchModel);
+                allOptions.push(...modelOptions);
+            }
+            options = allOptions;
+        }
+
         const vehicles = await Promise.all(
             options.map((option) => getVehicleById(option.id))
         );

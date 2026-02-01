@@ -92,6 +92,20 @@ interface VehicleData {
         publishedAt: string;
         duration: string;
     }>;
+    commonProblems: Array<{
+        component: string;
+        count: number;
+        percentage: number;
+        hasCrashes: boolean;
+        hasFires: boolean;
+        hasInjuries: boolean;
+        sampleIssues: string[];
+    }>;
+    prosAndCons: {
+        pros: string[];
+        cons: string[];
+        verdict: 'recommended' | 'caution' | 'avoid';
+    };
 }
 
 export default function VehiclePage() {
@@ -317,6 +331,39 @@ export default function VehiclePage() {
 
                         {/* Right Column - Quick Info */}
                         <div className="space-y-6">
+                            {/* Pros & Cons Summary */}
+                            {data.prosAndCons && (
+                                <div className="bg-card border rounded-xl p-6">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="font-semibold">At a Glance</h3>
+                                        <span className={cn(
+                                            'px-3 py-1 rounded-full text-xs font-bold',
+                                            data.prosAndCons.verdict === 'recommended' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+                                            data.prosAndCons.verdict === 'caution' && 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+                                            data.prosAndCons.verdict === 'avoid' && 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                        )}>
+                                            {data.prosAndCons.verdict === 'recommended' && 'Recommended'}
+                                            {data.prosAndCons.verdict === 'caution' && 'Proceed with Caution'}
+                                            {data.prosAndCons.verdict === 'avoid' && 'Not Recommended'}
+                                        </span>
+                                    </div>
+                                    <div className="space-y-3">
+                                        {data.prosAndCons.pros.slice(0, 3).map((pro, i) => (
+                                            <div key={i} className="flex items-start gap-2 text-sm">
+                                                <span className="text-green-500 mt-0.5">✓</span>
+                                                <span>{pro}</span>
+                                            </div>
+                                        ))}
+                                        {data.prosAndCons.cons.slice(0, 3).map((con, i) => (
+                                            <div key={i} className="flex items-start gap-2 text-sm">
+                                                <span className="text-red-500 mt-0.5">✗</span>
+                                                <span>{con}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Severity Breakdown */}
                             <div className="bg-card border rounded-xl p-6">
                                 <h3 className="font-semibold mb-4">Issue Severity</h3>

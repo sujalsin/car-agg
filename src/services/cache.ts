@@ -13,28 +13,59 @@ function getSupabaseClient(): SupabaseClient | null {
     return createClient(url, key);
 }
 
-// Vehicle data cache interface
+// Generic cache entry interface
+interface CacheEntry<T> {
+    data: T;
+    cachedAt: string;
+    expiresAt: string;
+}
+
+// TTL configurations (in hours)
+const CACHE_TTL = {
+    vehicleData: 24,       // Full vehicle API response
+    complaints: 48,        // NHTSA complaints
+    recalls: 48,           // NHTSA recalls
+    youtubeVideos: 168,    // 7 days
+    fuelPrices: 6,         // Regional fuel prices
+    news: 0.5,             // 30 minutes
+    specs: 168,            // 7 days for manufacturer specs
+};
+
+// Check if cache entry is valid
+function isCacheValid(expiresAt: string): boolean {
+    return new Date(expiresAt) > new Date();
+}
+
+// Calculate expiration time
+function getExpirationTime(hours: number): string {
+    const date = new Date();
+    date.setHours(date.getHours() + hours);
+    return date.toISOString();
+}
+
+// ==================== VEHICLE DATA CACHE ====================
+
 export interface CachedVehicleData {
-    id: string;
     year: number;
     make: string;
     model: string;
     data: Record<string, any>;
-    cached_at: string;
+    cachedAt: string;
+    expiresAt: string;
 }
 
-// Get cached vehicle data
-export async function getCachedVehicle(
+// Get cached full vehicle data
+export async function getCachedVehicleData(
     year: number,
     make: string,
     model: string
-): Promise<CachedVehicleData | null> {
+): Promise<Record<string, any> | null> {
     const supabase = getSupabaseClient();
     if (!supabase) return null;
 
     try {
         const { data, error } = await supabase
-            .from('vehicles')
+            .from('vehicle_data_cache')
             .select('*')
             .eq('year', year)
             .ilike('make', make)
@@ -43,23 +74,19 @@ export async function getCachedVehicle(
 
         if (error || !data) return null;
 
-        // Check if cache is still valid (24 hours)
-        const cachedAt = new Date(data.updated_at);
-        const now = new Date();
-        const hoursSinceCached = (now.getTime() - cachedAt.getTime()) / (1000 * 60 * 60);
-
-        if (hoursSinceCached > 24) {
+        // Check if cache is still valid
+        if (!isCacheValid(data.expires_at)) {
             return null; // Cache expired
         }
 
-        return data;
+        return data.data;
     } catch (error) {
-        console.error('Error getting cached vehicle:', error);
+        console.error('Error getting cached vehicle data:', error);
         return null;
     }
 }
 
-// Save vehicle data to cache
+// Save full vehicle data to cache
 export async function cacheVehicleData(
     year: number,
     make: string,
@@ -70,84 +97,187 @@ export async function cacheVehicleData(
     if (!supabase) return false;
 
     try {
+        const now = new Date().toISOString();
+        const expiresAt = getExpirationTime(CACHE_TTL.vehicleData);
+
         const { error } = await supabase
-            .from('vehicles')
+            .from('vehicle_data_cache')
             .upsert({
                 year,
                 make: make.toUpperCase(),
                 model,
-                engine: vehicleData.variants?.[0]?.engine || null,
-                transmission: vehicleData.variants?.[0]?.transmission || null,
-                drivetrain: vehicleData.variants?.[0]?.drivetrain || null,
-                fuel_type: vehicleData.variants?.[0]?.fuelType || null,
-                updated_at: new Date().toISOString(),
+                data: vehicleData,
+                cached_at: now,
+                expires_at: expiresAt,
             }, {
-                onConflict: 'year,make,model,trim',
+                onConflict: 'year,make,model',
             });
 
         if (error) {
-            console.error('Error caching vehicle:', error);
+            console.error('Error caching vehicle data:', error);
             return false;
         }
 
         return true;
     } catch (error) {
-        console.error('Error caching vehicle:', error);
+        console.error('Error caching vehicle data:', error);
         return false;
     }
 }
 
-// Cache complaints for a vehicle
-export async function cacheComplaints(
-    vehicleId: string,
-    complaints: Array<{
-        nhtsaId: string;
-        dateReceived: string;
-        component: string;
-        summary: string;
-        crash: boolean;
-        fire: boolean;
-        injuries: number;
-        deaths: number;
-        mileage?: number;
-    }>
+// ==================== YOUTUBE VIDEOS CACHE ====================
+
+export interface CachedYouTubeVideo {
+    vehicleId: string;
+    videoId: string;
+    title: string;
+    channelName: string;
+    thumbnail: string;
+    viewCount: number;
+    publishedAt: string;
+    duration: string;
+}
+
+// Get cached YouTube videos for a vehicle
+export async function getCachedYouTubeVideos(
+    year: number,
+    make: string,
+    model: string
+): Promise<CachedYouTubeVideo[] | null> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return null;
+
+    try {
+        const vehicleKey = `${year}-${make.toUpperCase()}-${model}`;
+
+        const { data, error } = await supabase
+            .from('youtube_cache')
+            .select('*')
+            .eq('vehicle_key', vehicleKey)
+            .single();
+
+        if (error || !data) return null;
+
+        if (!isCacheValid(data.expires_at)) {
+            return null;
+        }
+
+        return data.videos;
+    } catch (error) {
+        return null;
+    }
+}
+
+// Cache YouTube videos for a vehicle
+export async function cacheYouTubeVideos(
+    year: number,
+    make: string,
+    model: string,
+    videos: CachedYouTubeVideo[]
 ): Promise<boolean> {
     const supabase = getSupabaseClient();
     if (!supabase) return false;
 
     try {
+        const vehicleKey = `${year}-${make.toUpperCase()}-${model}`;
+        const now = new Date().toISOString();
+        const expiresAt = getExpirationTime(CACHE_TTL.youtubeVideos);
+
         const { error } = await supabase
-            .from('complaints')
-            .upsert(
-                complaints.map(c => ({
-                    vehicle_id: vehicleId,
-                    nhtsa_id: c.nhtsaId,
-                    date_received: c.dateReceived,
-                    component: c.component,
-                    summary: c.summary,
-                    crash: c.crash,
-                    fire: c.fire,
-                    injuries: c.injuries,
-                    deaths: c.deaths,
-                    mileage: c.mileage,
-                })),
-                { onConflict: 'nhtsa_id' }
-            );
+            .from('youtube_cache')
+            .upsert({
+                vehicle_key: vehicleKey,
+                videos,
+                cached_at: now,
+                expires_at: expiresAt,
+            }, {
+                onConflict: 'vehicle_key',
+            });
 
-        if (error) {
-            console.error('Error caching complaints:', error);
-            return false;
-        }
-
-        return true;
+        return !error;
     } catch (error) {
-        console.error('Error caching complaints:', error);
         return false;
     }
 }
 
+// ==================== FUEL PRICES CACHE ====================
+
+export interface CachedFuelPrices {
+    zipcode: string;
+    state: string;
+    region: string;
+    regular: number;
+    premium: number;
+    diesel: number;
+    electric: number;
+}
+
+// Get cached fuel prices for a zipcode
+export async function getCachedFuelPrices(
+    zipcode: string
+): Promise<CachedFuelPrices | null> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return null;
+
+    try {
+        const { data, error } = await supabase
+            .from('fuel_prices_cache')
+            .select('*')
+            .eq('zipcode', zipcode)
+            .single();
+
+        if (error || !data) return null;
+
+        if (!isCacheValid(data.expires_at)) {
+            return null;
+        }
+
+        return data;
+    } catch (error) {
+        return null;
+    }
+}
+
+// Cache fuel prices for a zipcode
+export async function cacheFuelPrices(
+    zipcode: string,
+    prices: CachedFuelPrices
+): Promise<boolean> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return false;
+
+    try {
+        const now = new Date().toISOString();
+        const expiresAt = getExpirationTime(CACHE_TTL.fuelPrices);
+
+        const { error } = await supabase
+            .from('fuel_prices_cache')
+            .upsert({
+                ...prices,
+                cached_at: now,
+                expires_at: expiresAt,
+            }, {
+                onConflict: 'zipcode',
+            });
+
+        return !error;
+    } catch (error) {
+        return false;
+    }
+}
+
+// ==================== NEWS CACHE ====================
+
+export interface CachedNewsItem {
+    title: string;
+    link: string;
+    pubDate: string;
+    source: string;
+    sourceUrl: string;
+}
+
 // Get cached news articles
-export async function getCachedNews(maxAgeMinutes: number = 30): Promise<Array<any> | null> {
+export async function getCachedNews(): Promise<CachedNewsItem[] | null> {
     const supabase = getSupabaseClient();
     if (!supabase) return null;
 
@@ -155,19 +285,13 @@ export async function getCachedNews(maxAgeMinutes: number = 30): Promise<Array<a
         const { data, error } = await supabase
             .from('news_cache')
             .select('*')
-            .order('fetched_at', { ascending: false })
-            .limit(1)
+            .eq('id', 'latest')
             .single();
 
         if (error || !data) return null;
 
-        // Check cache age
-        const cachedAt = new Date(data.fetched_at);
-        const now = new Date();
-        const minutesSinceCached = (now.getTime() - cachedAt.getTime()) / (1000 * 60);
-
-        if (minutesSinceCached > maxAgeMinutes) {
-            return null; // Cache expired
+        if (!isCacheValid(data.expires_at)) {
+            return null;
         }
 
         return data.articles;
@@ -177,29 +301,182 @@ export async function getCachedNews(maxAgeMinutes: number = 30): Promise<Array<a
 }
 
 // Cache news articles
-export async function cacheNews(articles: Array<any>): Promise<boolean> {
+export async function cacheNews(articles: CachedNewsItem[]): Promise<boolean> {
     const supabase = getSupabaseClient();
     if (!supabase) return false;
 
     try {
+        const now = new Date().toISOString();
+        const expiresAt = getExpirationTime(CACHE_TTL.news);
+
         const { error } = await supabase
             .from('news_cache')
             .upsert({
                 id: 'latest',
                 articles,
-                fetched_at: new Date().toISOString(),
+                cached_at: now,
+                expires_at: expiresAt,
             }, {
                 onConflict: 'id',
             });
 
-        if (error) {
-            console.error('Error caching news:', error);
-            return false;
+        return !error;
+    } catch (error) {
+        return false;
+    }
+}
+
+// ==================== COMPLAINTS CACHE ====================
+
+// Get cached complaints
+export async function getCachedComplaints(
+    year: number,
+    make: string,
+    model: string
+): Promise<any[] | null> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return null;
+
+    try {
+        const vehicleKey = `${year}-${make.toUpperCase()}-${model}`;
+
+        const { data, error } = await supabase
+            .from('complaints_cache')
+            .select('*')
+            .eq('vehicle_key', vehicleKey)
+            .single();
+
+        if (error || !data) return null;
+
+        if (!isCacheValid(data.expires_at)) {
+            return null;
         }
 
-        return true;
+        return data.complaints;
     } catch (error) {
-        console.error('Error caching news:', error);
+        return null;
+    }
+}
+
+// Cache complaints
+export async function cacheComplaints(
+    year: number,
+    make: string,
+    model: string,
+    complaints: any[]
+): Promise<boolean> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return false;
+
+    try {
+        const vehicleKey = `${year}-${make.toUpperCase()}-${model}`;
+        const now = new Date().toISOString();
+        const expiresAt = getExpirationTime(CACHE_TTL.complaints);
+
+        const { error } = await supabase
+            .from('complaints_cache')
+            .upsert({
+                vehicle_key: vehicleKey,
+                complaints,
+                cached_at: now,
+                expires_at: expiresAt,
+            }, {
+                onConflict: 'vehicle_key',
+            });
+
+        return !error;
+    } catch (error) {
         return false;
+    }
+}
+
+// ==================== RECALLS CACHE ====================
+
+// Get cached recalls
+export async function getCachedRecalls(
+    year: number,
+    make: string,
+    model: string
+): Promise<any[] | null> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return null;
+
+    try {
+        const vehicleKey = `${year}-${make.toUpperCase()}-${model}`;
+
+        const { data, error } = await supabase
+            .from('recalls_cache')
+            .select('*')
+            .eq('vehicle_key', vehicleKey)
+            .single();
+
+        if (error || !data) return null;
+
+        if (!isCacheValid(data.expires_at)) {
+            return null;
+        }
+
+        return data.recalls;
+    } catch (error) {
+        return null;
+    }
+}
+
+// Cache recalls
+export async function cacheRecalls(
+    year: number,
+    make: string,
+    model: string,
+    recalls: any[]
+): Promise<boolean> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return false;
+
+    try {
+        const vehicleKey = `${year}-${make.toUpperCase()}-${model}`;
+        const now = new Date().toISOString();
+        const expiresAt = getExpirationTime(CACHE_TTL.recalls);
+
+        const { error } = await supabase
+            .from('recalls_cache')
+            .upsert({
+                vehicle_key: vehicleKey,
+                recalls,
+                cached_at: now,
+                expires_at: expiresAt,
+            }, {
+                onConflict: 'vehicle_key',
+            });
+
+        return !error;
+    } catch (error) {
+        return false;
+    }
+}
+
+// ==================== CACHE STATS ====================
+
+export async function getCacheStats(): Promise<{
+    vehicleDataCount: number;
+    youtubeCount: number;
+    newsIsCached: boolean;
+} | null> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return null;
+
+    try {
+        const [vehicleData, youtube, news] = await Promise.all([
+            supabase.from('vehicle_data_cache').select('id', { count: 'exact' }),
+            supabase.from('youtube_cache').select('vehicle_key', { count: 'exact' }),
+            supabase.from('news_cache').select('id').eq('id', 'latest').single(),
+        ]);
+
+        return {
+            vehicleDataCount: vehicleData.count || 0,
+            youtubeCount: youtube.count || 0,
+            newsIsCached: !!news.data,
+        };
+    } catch (error) {
+        return null;
     }
 }

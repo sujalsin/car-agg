@@ -56,7 +56,7 @@ async function fetchRSSFeed(source: typeof NEWS_SOURCES[0]): Promise<NewsItem[]>
         // Parse RSS items
         const itemMatches = xml.match(/<item>([\s\S]*?)<\/item>/g) || [];
 
-        for (const itemXml of itemMatches.slice(0, 5)) { // 5 items per source
+        for (const itemXml of itemMatches.slice(0, 6)) { // 6 items per source for 20+ total
             const title = extractTag(itemXml, 'title');
             const link = extractTag(itemXml, 'link');
             const pubDate = extractTag(itemXml, 'pubDate');
@@ -154,8 +154,8 @@ export async function GET() {
             new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime()
         );
 
-        // Take top 12 items
-        const news = allNews.slice(0, 12);
+        // Take top 20 items for comprehensive daily coverage
+        const news = allNews.slice(0, 20);
 
         // Use fallback if all feeds fail
         if (news.length === 0) {

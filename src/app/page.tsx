@@ -589,39 +589,71 @@ export default function HomePage() {
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
           ) : news.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {news.slice(0, 6).map((item, index) => (
-                <a
-                  key={index}
-                  href={item.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group bg-card border rounded-xl overflow-hidden card-hover"
-                >
-                  {item.image && (
-                    <div className="aspect-video relative bg-muted overflow-hidden">
-                      <img
-                        src={item.image}
-                        alt={item.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      />
+            <div className="space-y-4">
+              {/* Top 6 featured articles with images */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {news.slice(0, 6).map((item, index) => (
+                  <a
+                    key={index}
+                    href={item.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group bg-card border rounded-xl overflow-hidden card-hover"
+                  >
+                    {item.image && (
+                      <div className="aspect-video relative bg-muted overflow-hidden">
+                        <img
+                          src={item.image}
+                          alt={item.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      </div>
+                    )}
+                    <div className="p-4">
+                      <h3 className="font-semibold text-sm line-clamp-2 mb-3 group-hover:text-blue-500 transition-colors">
+                        {item.title}
+                      </h3>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <ExternalLink className="w-3 h-3" />
+                          {item.source}
+                        </span>
+                        <span>{new Date(item.pubDate).toLocaleDateString()}</span>
+                      </div>
                     </div>
-                  )}
-                  <div className="p-4">
-                    <h3 className="font-semibold text-sm line-clamp-2 mb-3 group-hover:text-blue-500 transition-colors">
-                      {item.title}
-                    </h3>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <ExternalLink className="w-3 h-3" />
-                        {item.source}
-                      </span>
-                      <span>{new Date(item.pubDate).toLocaleDateString()}</span>
-                    </div>
+                  </a>
+                ))}
+              </div>
+
+              {/* Additional headlines in compact list */}
+              {news.length > 6 && (
+                <div className="border rounded-xl overflow-hidden">
+                  <h3 className="px-4 py-3 bg-muted/50 font-semibold text-sm border-b">More Headlines</h3>
+                  <div className="divide-y max-h-96 overflow-y-auto">
+                    {news.slice(6, 20).map((item, index) => (
+                      <a
+                        key={index + 6}
+                        href={item.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-3 hover:bg-muted/30 transition-colors group"
+                      >
+                        <div className="flex-1 min-w-0 mr-4">
+                          <h4 className="text-sm font-medium line-clamp-1 group-hover:text-blue-500 transition-colors">
+                            {item.title}
+                          </h4>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+                          <span className="hidden sm:inline">{item.source}</span>
+                          <span>{new Date(item.pubDate).toLocaleDateString()}</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </div>
+                      </a>
+                    ))}
                   </div>
-                </a>
-              ))}
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center py-12 bg-muted/30 rounded-xl">

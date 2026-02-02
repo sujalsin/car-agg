@@ -104,6 +104,17 @@ export async function GET(request: NextRequest) {
     }
 
     try {
+        // Check cache first
+        const { getCachedVehicleData, cacheVehicleData } = await import('@/services/cache');
+        const cachedData = await getCachedVehicleData(yearNum, make, model);
+
+        if (cachedData) {
+            console.log(`Cache HIT for ${yearNum} ${make} ${model}`);
+            return NextResponse.json(cachedData);
+        }
+
+        console.log(`Cache MISS for ${yearNum} ${make} ${model} - fetching fresh data`);
+
         // Normalize make name for EPA (title case)
         const normalizedMake = make.charAt(0).toUpperCase() + make.slice(1).toLowerCase();
 
@@ -159,6 +170,8 @@ export async function GET(request: NextRequest) {
                                 : 'regular',
                     vehicleClass: firstVariant.vehicleClass || 'Midsize Cars',
                     year: yearNum,
+                    make: normalizedMake,
+                    model,
                     complaintRate: (complaints.length / 50000) * 10000, // Normalize to per 10k
                 },
                 fuelPrices
@@ -213,6 +226,11 @@ export async function GET(request: NextRequest) {
                 aggregateCommonProblems(complaints)
             ),
         };
+
+        // Cache the response for future requests
+        cacheVehicleData(yearNum, make, model, response).catch(err =>
+            console.error('Failed to cache vehicle data:', err)
+        );
 
         return NextResponse.json(response);
     } catch (error) {

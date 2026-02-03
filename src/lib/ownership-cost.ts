@@ -1,4 +1,5 @@
 import { FuelPrices } from '@/services/epa';
+import { estimateMSRP } from './vehicle-pricing';
 
 export interface OwnershipCostBreakdown {
     totalAnnualCost: number;
@@ -8,6 +9,7 @@ export interface OwnershipCostBreakdown {
     repairCost: number;
     depreciation: number;
     fiveYearCost: number;
+    msrp: number;
     // New detailed breakdown
     details: {
         fuelPrice: number;
@@ -20,7 +22,7 @@ export interface OwnershipCostBreakdown {
 }
 
 export interface OwnershipCostInput {
-    msrp: number;
+    msrp?: number; // Optional - will be estimated if not provided
     combinedMpg: number;
     fuelType: 'regular' | 'premium' | 'diesel' | 'electric' | 'hybrid';
     vehicleClass: string;
@@ -31,6 +33,7 @@ export interface OwnershipCostInput {
     annualMiles?: number;
     zipcode?: string;
     state?: string;
+    trim?: string; // Optional trim for better MSRP estimation
 }
 
 export interface RegionalFuelPrices extends FuelPrices {
@@ -279,6 +282,15 @@ export function calculateOwnershipCost(
 
     // Get state from zipcode or use default
     const state = input.state || (input.zipcode ? getStateFromZipcode(input.zipcode) : 'TX');
+    
+    // Estimate MSRP if not provided
+    const msrp = input.msrp || estimateMSRP(
+        input.year,
+        input.make,
+        input.model,
+        input.vehicleClass,
+        input.trim
+    ).baseMsrp;
 
     // 1. Calculate fuel cost with regional prices
     let fuelPrice: number;
@@ -310,7 +322,7 @@ export function calculateOwnershipCost(
     // 2. Calculate insurance with state averages and vehicle factors
     const stateBaseInsurance = STATE_INSURANCE_AVERAGES[state] || 1500;
     const classMultiplier = INSURANCE_MULTIPLIERS[input.vehicleClass] || 1.0;
-    const msrpMultiplier = 1 + Math.max(0, (input.msrp - 30000) / 150000);
+    const msrpMultiplier = 1 + Math.max(0, (msrp - 30000) / 150000);
     const insuranceCost = Math.round(stateBaseInsurance * classMultiplier * msrpMultiplier);
 
     // 3. Calculate maintenance with brand factors
@@ -324,7 +336,7 @@ export function calculateOwnershipCost(
 
     // 5. Calculate accurate depreciation
     const depreciationData = calculateDepreciation(
-        input.msrp,
+        msrp,
         input.year,
         input.make,
         input.vehicleClass
@@ -336,9 +348,9 @@ export function calculateOwnershipCost(
 
     // Five year projection with varying depreciation
     let fiveYearCost = 0;
-    let projectedValue = input.msrp;
+    let projectedValue = msrp;
     for (let y = 0; y < 5; y++) {
-        const yearData = calculateDepreciation(input.msrp, input.year - y, input.make, input.vehicleClass);
+        const yearData = calculateDepreciation(msrp, input.year - y, input.make, input.vehicleClass);
         fiveYearCost += fuelCost + insuranceCost + maintenanceCost + repairCost + yearData.annualDepreciation;
     }
 
@@ -350,6 +362,7 @@ export function calculateOwnershipCost(
         repairCost,
         depreciation,
         fiveYearCost: Math.round(fiveYearCost),
+        msrp,
         details: {
             fuelPrice,
             fuelType: input.fuelType,

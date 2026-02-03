@@ -5,6 +5,13 @@ import { searchCarReviews, getVideoDetails } from '@/services/youtube';
 import { calculateReliabilityScore } from '@/lib/reliability-score';
 import { calculateOwnershipCost } from '@/lib/ownership-cost';
 import { aggregateCommonProblems, generateProsAndCons, CommonProblem, ProsConsSummary } from '@/lib/common-problems';
+import { 
+    checkRateLimit, 
+    getRateLimitHeaders, 
+    createRateLimitResponse,
+    getClientIP,
+    RATE_LIMITS 
+} from '@/lib/rate-limit';
 
 export interface VehicleData {
     year: number;
@@ -68,6 +75,15 @@ export interface VehicleData {
         repairCost: number;
         depreciation: number;
         fiveYearCost: number;
+        msrp: number;
+        details?: {
+            fuelPrice: number;
+            fuelType: string;
+            annualMiles: number;
+            stateInsuranceAverage: number;
+            depreciationRate: number;
+            vehicleRetainedValue: number;
+        };
     } | null;
     youtubeVideos: Array<{
         id: string;
@@ -83,6 +99,15 @@ export interface VehicleData {
 }
 
 export async function GET(request: NextRequest) {
+    // Check rate limit
+    const clientIP = getClientIP(request);
+    const rateLimitKey = `vehicles:${clientIP}`;
+    const rateLimitResult = checkRateLimit(rateLimitKey, RATE_LIMITS.vehicles);
+    
+    if (!rateLimitResult.allowed) {
+        return createRateLimitResponse(rateLimitResult.resetTime);
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const year = searchParams.get('year');
     const make = searchParams.get('make');
@@ -91,7 +116,14 @@ export async function GET(request: NextRequest) {
     if (!year || !make || !model) {
         return NextResponse.json(
             { error: 'Missing required parameters: year, make, model' },
-            { status: 400 }
+            { 
+                status: 400,
+                headers: getRateLimitHeaders(
+                    RATE_LIMITS.vehicles.limit,
+                    rateLimitResult.remaining,
+                    rateLimitResult.resetTime
+                ),
+            }
         );
     }
 
@@ -99,7 +131,14 @@ export async function GET(request: NextRequest) {
     if (isNaN(yearNum) || yearNum < 1980 || yearNum > new Date().getFullYear() + 1) {
         return NextResponse.json(
             { error: 'Invalid year' },
-            { status: 400 }
+            { 
+                status: 400,
+                headers: getRateLimitHeaders(
+                    RATE_LIMITS.vehicles.limit,
+                    rateLimitResult.remaining,
+                    rateLimitResult.resetTime
+                ),
+            }
         );
     }
 
@@ -110,7 +149,13 @@ export async function GET(request: NextRequest) {
 
         if (cachedData) {
             console.log(`Cache HIT for ${yearNum} ${make} ${model}`);
-            return NextResponse.json(cachedData);
+            return NextResponse.json(cachedData, {
+                headers: getRateLimitHeaders(
+                    RATE_LIMITS.vehicles.limit,
+                    rateLimitResult.remaining,
+                    rateLimitResult.resetTime
+                ),
+            });
         }
 
         console.log(`Cache MISS for ${yearNum} ${make} ${model} - fetching fresh data`);
@@ -159,7 +204,7 @@ export async function GET(request: NextRequest) {
             const firstVariant = variantsWithRealMpg[0];
             ownershipCost = calculateOwnershipCost(
                 {
-                    msrp: 30000, // Default assumption
+                    // MSRP will be estimated by the function based on vehicle details
                     combinedMpg: firstVariant.combinedMpg,
                     fuelType: firstVariant.fuelType.toLowerCase().includes('premium')
                         ? 'premium'
@@ -173,6 +218,7 @@ export async function GET(request: NextRequest) {
                     make: normalizedMake,
                     model,
                     complaintRate: (complaints.length / 50000) * 10000, // Normalize to per 10k
+                    trim: firstVariant.trim,
                 },
                 fuelPrices
             );
@@ -232,12 +278,25 @@ export async function GET(request: NextRequest) {
             console.error('Failed to cache vehicle data:', err)
         );
 
-        return NextResponse.json(response);
+        return NextResponse.json(response, {
+            headers: getRateLimitHeaders(
+                RATE_LIMITS.vehicles.limit,
+                rateLimitResult.remaining,
+                rateLimitResult.resetTime
+            ),
+        });
     } catch (error) {
         console.error('Error fetching vehicle data:', error);
         return NextResponse.json(
             { error: 'Failed to fetch vehicle data' },
-            { status: 500 }
+            { 
+                status: 500,
+                headers: getRateLimitHeaders(
+                    RATE_LIMITS.vehicles.limit,
+                    rateLimitResult.remaining,
+                    rateLimitResult.resetTime
+                ),
+            }
         );
     }
 }

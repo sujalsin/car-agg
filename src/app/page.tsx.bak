@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   Search,
   ChevronDown,
@@ -18,13 +19,9 @@ import {
   Newspaper,
   CheckCircle,
   XCircle,
-  Loader2,
-  Bookmark
+  Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Header } from '@/components/Header';
-import { ThemeToggleSimple } from '@/components/ThemeToggle';
-import { HeroSkeleton } from '@/components/Skeletons';
 
 // Featured cars data (would come from API in production)
 const TRENDING_CARS = [
@@ -93,7 +90,7 @@ export default function HomePage() {
 
   // News state
   const [news, setNews] = useState<NewsItem[]>([]);
-  const [newsLoading, setNewsLoading] = useState(true);
+  const [newsLoading, setNewsLoading] = useState(true);;
 
   // Generate years from current year down to 1985
   useEffect(() => {
@@ -114,6 +111,8 @@ export default function HomePage() {
 
     // Fetch news
     fetchNews();
+
+    console.log('HomePage mounted');
   }, []);
 
   const fetchRecentRecalls = async () => {
@@ -240,8 +239,24 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen">
-      {/* Header with Theme Toggle and Saved/Compare */}
-      <Header />
+      {/* Header */}
+      <header className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-foreground flex items-center justify-center">
+              <Car className="w-5 h-5 text-background" />
+            </div>
+            <span className="font-semibold text-lg">CARAG</span>
+          </div>
+          <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
+            <a href="/compare" className="hover:text-foreground transition-colors">Compare</a>
+            <a href="#trending" className="hover:text-foreground transition-colors">Trending</a>
+            <a href="#reliable" className="hover:text-foreground transition-colors">Most Reliable</a>
+            <a href="#news" className="hover:text-foreground transition-colors">News</a>
+            <a href="#methodology" className="hover:text-foreground transition-colors">Methodology</a>
+          </nav>
+        </div>
+      </header>
 
       {/* Recent Recalls Banner */}
       {recentRecalls.length > 0 && (
@@ -267,7 +282,7 @@ export default function HomePage() {
       {/* Compact Hero Section */}
       <section className="py-8 px-6 border-b border-border">
         <div className="max-w-5xl mx-auto">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:gap-12">
             {/* Left - Text & Search */}
             <div className="flex-1 mb-6 lg:mb-0">
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight mb-2">

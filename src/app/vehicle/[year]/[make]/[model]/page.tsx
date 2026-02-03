@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Script from 'next/script';
 import {
     ArrowLeft,
     Car,
@@ -13,7 +14,11 @@ import {
     ChevronDown,
     ChevronUp,
     ExternalLink,
-    Share2
+    Share2,
+    Printer,
+    Bookmark,
+    Scale,
+    Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScoreGauge, ScoreBadge } from '@/components/ScoreGauge';
@@ -21,6 +26,14 @@ import { SafetyTimeline } from '@/components/SafetyTimeline';
 import { WhatBreaks } from '@/components/WhatBreaks';
 import { CostCalculator } from '@/components/CostCalculator';
 import { YouTubeReviews } from '@/components/YouTubeReviews';
+import { Header } from '@/components/Header';
+import { SaveVehicleButton, CompareButton } from '@/components/SaveVehicleButton';
+import { ShareButton } from '@/components/ShareButton';
+import { PrintButton, PrintHeader, PrintFooter, PrintDataSources } from '@/components/PrintButton';
+import { VehiclePageSkeleton } from '@/components/Skeletons';
+import { TCOBreakdown } from '@/components/charts/TCOBreakdown';
+import { ReliabilityChart } from '@/components/charts/ReliabilityChart';
+import { useToast, useSuccessToast, useErrorToast } from '@/components/Toast';
 
 interface VehicleData {
     year: number;
@@ -83,6 +96,15 @@ interface VehicleData {
         repairCost: number;
         depreciation: number;
         fiveYearCost: number;
+        msrp: number;
+        details?: {
+            fuelPrice: number;
+            fuelType: string;
+            annualMiles: number;
+            stateInsuranceAverage: number;
+            depreciationRate: number;
+            vehicleRetainedValue: number;
+        };
     } | null;
     youtubeVideos: Array<{
         id: string;
@@ -109,9 +131,57 @@ interface VehicleData {
     };
 }
 
+// Generate structured data for SEO
+function generateStructuredData(data: VehicleData) {
+    const vehicleName = `${data.year} ${data.make} ${data.model}`;
+    const bestMpg = data.variants.length > 0 
+        ? Math.max(...data.variants.map(v => v.combinedMpg || 0))
+        : null;
+
+    return {
+        '@context': 'https://schema.org',
+        '@type': 'Vehicle',
+        name: vehicleName,
+        vehicleModelDate: data.year.toString(),
+        manufacturer: {
+            '@type': 'Organization',
+            name: data.make,
+        },
+        model: data.model,
+        aggregateRating: {
+            '@type': 'AggregateRating',
+            ratingValue: data.reliabilityScore.overall.toString(),
+            bestRating: '10',
+            worstRating: '0',
+            reviewCount: data.reliabilityScore.complaintCount.toString(),
+        },
+        ...(bestMpg && {
+            fuelConsumption: {
+                '@type': 'QuantitativeValue',
+                value: bestMpg.toString(),
+                unitCode: 'MPG',
+            },
+        }),
+        additionalProperty: [
+            {
+                '@type': 'PropertyValue',
+                name: 'NHTSA Safety Recalls',
+                value: data.reliabilityScore.recallCount.toString(),
+            },
+            {
+                '@type': 'PropertyValue',
+                name: 'NHTSA Owner Complaints',
+                value: data.reliabilityScore.complaintCount.toString(),
+            },
+        ],
+    };
+}
+
 export default function VehiclePage() {
     const params = useParams();
     const router = useRouter();
+    const successToast = useSuccessToast();
+    const errorToast = useErrorToast();
     const [data, setData] = useState<VehicleData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -123,6 +193,9 @@ export default function VehiclePage() {
     const model = decodeURIComponent(params.model as string);
 
     useEffect(() => {
+        // Update document title for SEO
+        document.title = `${year} ${make} ${model} Reliability, Safety & Ownership Cost | CARAG`;
+        
         const fetchData = async () => {
             try {
                 setLoading(true);
@@ -156,14 +229,7 @@ export default function VehiclePage() {
     ];
 
     if (loading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="text-center">
-                    <div className="w-12 h-12 border-4 border-muted border-t-foreground rounded-full animate-spin mx-auto mb-4" />
-                    <p className="text-muted-foreground">Loading vehicle data...</p>
-                </div>
-            </div>
-        );
+        return <VehiclePageSkeleton />;
     }
 
     if (error || !data) {
@@ -209,28 +275,39 @@ export default function VehiclePage() {
         }
     };
 
+    const structuredData = generateStructuredData(data);
+
     return (
         <div className="min-h-screen bg-background">
-            {/* Header */}
-            <header className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-                <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <Link href="/" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
-                            <ArrowLeft className="w-4 h-4" />
-                            <span className="text-sm hidden sm:inline">Back</span>
-                        </Link>
-                        <div className="h-4 w-px bg-border" />
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-lg bg-foreground flex items-center justify-center">
-                                <Car className="w-5 h-5 text-background" />
-                            </div>
-                            <span className="font-semibold">CARAG</span>
-                        </div>
-                    </div>
-                </div>
-            </header>
+            {/* Structured Data for SEO */}
+            <Script id="vehicle-structured-data" type="application/ld+json">
+                {JSON.stringify(structuredData)}
+            </Script>
 
-            {/* Hero Section */}
+            {/* Breadcrumb Structured Data */}
+            <Script id="breadcrumb-structured-data" type="application/ld+json">
+                {JSON.stringify({
+                    '@context': 'https://schema.org',
+                    '@type': 'BreadcrumbList',
+                    itemListElement: [
+                        { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://carag.com' },
+                        { '@type': 'ListItem', position: 2, name: year, item: `https://carag.com/vehicle/${year}` },
+                        { '@type': 'ListItem', position: 3, name: make, item: `https://carag.com/vehicle/${year}/${encodeURIComponent(make)}` },
+                        { '@type': 'ListItem', position: 4, name: model },
+                    ],
+                })}
+            </Script>
+
+            {/* Print Header */}
+            <PrintHeader 
+                title={`${data.year} ${data.make} ${data.model}`}
+                subtitle={`Reliability Score: ${data.reliabilityScore.overall}/10`}
+            />
+
+            {/* Main Header with Actions */}
+            <Header showBackButton />
+
+            {/* Hero Section with Action Buttons */}
             <section className="border-b border-border">
                 <div className="max-w-6xl mx-auto px-6 py-8">
                     <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
@@ -238,6 +315,9 @@ export default function VehiclePage() {
                             <h1 className="text-3xl font-bold mb-2">
                                 {data.year} {data.make} {data.model}
                             </h1>
+                            <p className="text-sm text-muted-foreground mb-3">
+                                Research reliability, safety recalls, fuel economy, and ownership costs.
+                            </p>
                             <div className="flex flex-wrap items-center gap-3">
                                 <span className={cn('px-2.5 py-1 rounded-full text-xs font-medium', getLemonRiskColor(data.reliabilityScore.lemonYearRisk))}>
                                     {data.reliabilityScore.lemonYearRisk === 'low' && '✓ Safe Buy'}
@@ -250,15 +330,41 @@ export default function VehiclePage() {
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-6">
+                        <div className="flex flex-col sm:flex-row items-center gap-4">
                             <ScoreGauge score={data.reliabilityScore.overall} size="lg" />
+                            
+                            {/* Action Buttons */}
+                            <div className="flex flex-wrap gap-2 no-print">
+                                <SaveVehicleButton 
+                                    year={data.year} 
+                                    make={data.make} 
+                                    model={data.model}
+                                    variant="outline"
+                                    size="sm"
+                                    onSave={() => successToast(`Saved ${data.year} ${data.make} ${data.model}`)}
+                                />
+                                <CompareButton 
+                                    year={data.year} 
+                                    make={data.make} 
+                                    model={data.model}
+                                />
+                                <ShareButton 
+                                    year={data.year} 
+                                    make={data.make} 
+                                    model={data.model}
+                                    reliabilityScore={data.reliabilityScore.overall}
+                                    variant="outline"
+                                    size="sm"
+                                />
+                                <PrintButton variant="outline" size="sm" showLabel={false} />
+                            </div>
                         </div>
                     </div>
                 </div>
             </section>
 
             {/* Tabs */}
-            <nav className="border-b border-border sticky top-[65px] z-40 bg-background">
+            <nav className="border-b border-border sticky top-[65px] z-40 bg-background no-print">
                 <div className="max-w-6xl mx-auto px-6">
                     <div className="flex gap-1 overflow-x-auto">
                         {tabs.map((tab) => (
@@ -315,8 +421,14 @@ export default function VehiclePage() {
                                 />
                             </div>
 
+                            {/* Reliability Chart */}
+                            <div className="bg-card border rounded-xl p-6 no-print">
+                                <h2 className="text-lg font-semibold mb-4">Component Reliability Scores</h2>
+                                <ReliabilityChart components={data.reliabilityScore.components} />
+                            </div>
+
                             {/* Component Scores */}
-                            <div className="bg-card border rounded-xl p-6">
+                            <div className="bg-card border rounded-xl p-6 print-only">
                                 <h2 className="text-lg font-semibold mb-4">Component Reliability</h2>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                     {data.reliabilityScore.components
@@ -455,76 +567,6 @@ export default function VehiclePage() {
 
                         {data.variants.length > 0 ? (
                             <div className="space-y-6">
-                                {/* Engine & Performance */}
-                                <div className="bg-card border rounded-xl overflow-hidden">
-                                    <div className="bg-muted/50 px-5 py-3 border-b">
-                                        <h3 className="font-semibold flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                                            Engine & Performance
-                                        </h3>
-                                    </div>
-                                    <div className="p-5">
-                                        <div className="grid md:grid-cols-2 gap-x-8 gap-y-3">
-                                            <div className="flex justify-between py-2 border-b border-dashed">
-                                                <span className="text-muted-foreground">Engine Options</span>
-                                                <span className="font-medium text-right max-w-[60%]">
-                                                    {[...new Set(data.variants.map(v => v.engine))].filter(Boolean).join(' / ') || '--'}
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between py-2 border-b border-dashed">
-                                                <span className="text-muted-foreground">Fuel Type</span>
-                                                <span className="font-medium text-right">
-                                                    {[...new Set(data.variants.map(v => v.fuelType))].filter(Boolean).join(', ') || '--'}
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between py-2 border-b border-dashed">
-                                                <span className="text-muted-foreground">Transmission</span>
-                                                <span className="font-medium text-right max-w-[60%] truncate">
-                                                    {[...new Set(data.variants.map(v => v.trim?.split(',')[0]))].filter(Boolean).slice(0, 3).join(' / ') || '--'}
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between py-2 border-b border-dashed">
-                                                <span className="text-muted-foreground">Drivetrain</span>
-                                                <span className="font-medium text-right">
-                                                    {[...new Set(data.variants.map(v => v.drivetrain))].filter(Boolean).join(' / ') || '--'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Fuel Economy Summary */}
-                                <div className="bg-card border rounded-xl overflow-hidden">
-                                    <div className="bg-muted/50 px-5 py-3 border-b">
-                                        <h3 className="font-semibold flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                            Fuel Economy (EPA Estimated)
-                                        </h3>
-                                    </div>
-                                    <div className="p-5">
-                                        <div className="grid md:grid-cols-3 gap-4">
-                                            <div className="text-center p-4 bg-muted/30 rounded-lg">
-                                                <p className="text-2xl font-bold">
-                                                    {Math.min(...data.variants.map(v => v.cityMpg || 999).filter(n => n < 999))} - {Math.max(...data.variants.map(v => v.cityMpg || 0))}
-                                                </p>
-                                                <p className="text-sm text-muted-foreground">City MPG</p>
-                                            </div>
-                                            <div className="text-center p-4 bg-muted/30 rounded-lg">
-                                                <p className="text-2xl font-bold">
-                                                    {Math.min(...data.variants.map(v => v.highwayMpg || 999).filter(n => n < 999))} - {Math.max(...data.variants.map(v => v.highwayMpg || 0))}
-                                                </p>
-                                                <p className="text-sm text-muted-foreground">Highway MPG</p>
-                                            </div>
-                                            <div className="text-center p-4 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                                                <p className="text-2xl font-bold text-green-700 dark:text-green-400">
-                                                    {Math.min(...data.variants.map(v => v.combinedMpg || 999).filter(n => n < 999))} - {Math.max(...data.variants.map(v => v.combinedMpg || 0))}
-                                                </p>
-                                                <p className="text-sm text-green-600 dark:text-green-500">Combined MPG</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
                                 {/* All Configurations Table */}
                                 <div className="bg-card border rounded-xl overflow-hidden">
                                     <div className="bg-muted/50 px-5 py-3 border-b">
@@ -567,43 +609,6 @@ export default function VehiclePage() {
                                                 ))}
                                             </tbody>
                                         </table>
-                                    </div>
-                                </div>
-
-                                {/* Quick Specs Summary */}
-                                <div className="grid md:grid-cols-3 gap-4">
-                                    <div className="bg-card border rounded-xl p-5">
-                                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                            Engine Options
-                                        </h3>
-                                        <div className="space-y-2">
-                                            {[...new Set(data.variants.map(v => v.engine))].filter(Boolean).slice(0, 5).map((engine, i) => (
-                                                <p key={i} className="text-sm text-muted-foreground">{engine}</p>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="bg-card border rounded-xl p-5">
-                                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                            Drivetrain Options
-                                        </h3>
-                                        <div className="space-y-2">
-                                            {[...new Set(data.variants.map(v => v.drivetrain))].filter(Boolean).map((drive, i) => (
-                                                <p key={i} className="text-sm text-muted-foreground">{drive}</p>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="bg-card border rounded-xl p-5">
-                                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                                            Fuel Types
-                                        </h3>
-                                        <div className="space-y-2">
-                                            {[...new Set(data.variants.map(v => v.fuelType))].filter(Boolean).map((fuel, i) => (
-                                                <p key={i} className="text-sm text-muted-foreground">{fuel}</p>
-                                            ))}
-                                        </div>
                                     </div>
                                 </div>
 
@@ -753,14 +758,54 @@ export default function VehiclePage() {
 
                 {/* Ownership Cost Tab */}
                 {activeTab === 'cost' && (
-                    <div className="max-w-xl mx-auto animate-fadeIn">
+                    <div className="max-w-4xl mx-auto animate-fadeIn">
                         <h2 className="text-xl font-semibold mb-6">Total Cost of Ownership</h2>
-                        <div className="bg-card border rounded-xl p-6">
-                            <CostCalculator
-                                costs={data.ownershipCost}
-                                vehicleName={`${data.year} ${data.make} ${data.model}`}
-                            />
-                        </div>
+                        
+                        {data.ownershipCost ? (
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div className="bg-card border rounded-xl p-6">
+                                    <CostCalculator
+                                        costs={data.ownershipCost}
+                                        vehicleName={`${data.year} ${data.make} ${data.model}`}
+                                    />
+                                </div>
+                                
+                                <div className="bg-card border rounded-xl p-6 no-print">
+                                    <h3 className="font-semibold mb-4">Cost Breakdown</h3>
+                                    <TCOBreakdown data={data.ownershipCost} />
+                                </div>
+                                
+                                {/* Additional TCO Details */}
+                                {data.ownershipCost.details && (
+                                    <div className="md:col-span-2 bg-muted/30 rounded-xl p-6">
+                                        <h3 className="font-semibold mb-4">Calculation Details</h3>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                            <div>
+                                                <span className="text-muted-foreground">Current Fuel Price:</span>
+                                                <p className="font-medium">${data.ownershipCost.details.fuelPrice.toFixed(2)}/gal</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground">Annual Mileage:</span>
+                                                <p className="font-medium">{data.ownershipCost.details.annualMiles.toLocaleString()} miles</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground">Est. MSRP:</span>
+                                                <p className="font-medium">${data.ownershipCost.msrp?.toLocaleString() || '30,000'}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground">Retained Value:</span>
+                                                <p className="font-medium">{100 - data.ownershipCost.details.depreciationRate}%</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="text-center py-12 bg-muted/30 rounded-xl">
+                                <DollarSign className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                                <p className="text-muted-foreground">Cost data not available for this vehicle.</p>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -772,6 +817,60 @@ export default function VehiclePage() {
                     </div>
                 )}
             </main>
+
+            {/* FAQ Section for SEO */}
+            <section className="max-w-6xl mx-auto px-6 py-8 border-t">
+                <h2 className="text-xl font-semibold mb-6">Frequently Asked Questions</h2>
+                <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                        <details className="group bg-card border rounded-lg">
+                            <summary className="flex items-center justify-between p-4 cursor-pointer">
+                                <span className="font-medium">Is the {year} {make} {model} reliable?</span>
+                                <ChevronDown className="w-4 h-4 group-open:rotate-180 transition-transform" />
+                            </summary>
+                            <div className="px-4 pb-4 text-sm text-muted-foreground">
+                                Based on NHTSA data, the {year} {make} {model} has a reliability score of {data.reliabilityScore.overall}/10 with {data.reliabilityScore.complaintCount} owner complaints and {data.reliabilityScore.recallCount} safety recalls. {data.prosAndCons.verdict === 'recommended' ? 'This vehicle is generally considered reliable.' : data.prosAndCons.verdict === 'caution' ? 'Some issues have been reported - review the complaints before purchasing.' : 'Multiple issues have been reported - consider alternatives.'}
+                            </div>
+                        </details>
+                        <details className="group bg-card border rounded-lg">
+                            <summary className="flex items-center justify-between p-4 cursor-pointer">
+                                <span className="font-medium">What are common problems with the {year} {make} {model}?</span>
+                                <ChevronDown className="w-4 h-4 group-open:rotate-180 transition-transform" />
+                            </summary>
+                            <div className="px-4 pb-4 text-sm text-muted-foreground">
+                                {data.commonProblems.length > 0 
+                                    ? `The most commonly reported issues are: ${data.commonProblems.slice(0, 3).map(p => p.component).join(', ')}.` 
+                                    : 'No significant common problems have been reported to NHTSA for this vehicle.'}
+                            </div>
+                        </details>
+                    </div>
+                    <div className="space-y-4">
+                        <details className="group bg-card border rounded-lg">
+                            <summary className="flex items-center justify-between p-4 cursor-pointer">
+                                <span className="font-medium">What is the fuel economy?</span>
+                                <ChevronDown className="w-4 h-4 group-open:rotate-180 transition-transform" />
+                            </summary>
+                            <div className="px-4 pb-4 text-sm text-muted-foreground">
+                                The {year} {make} {model} has an EPA estimated {data.variants[0]?.combinedMpg || '--'} MPG combined, with {data.variants[0]?.cityMpg || '--'} MPG in the city and {data.variants[0]?.highwayMpg || '--'} MPG on the highway.
+                            </div>
+                        </details>
+                        <details className="group bg-card border rounded-lg">
+                            <summary className="flex items-center justify-between p-4 cursor-pointer">
+                                <span className="font-medium">Are there any safety recalls?</span>
+                                <ChevronDown className="w-4 h-4 group-open:rotate-180 transition-transform" />
+                            </summary>
+                            <div className="px-4 pb-4 text-sm text-muted-foreground">
+                                There {data.reliabilityScore.recallCount === 1 ? 'is' : 'are'} currently {data.reliabilityScore.recallCount} safety recall{data.reliabilityScore.recallCount !== 1 ? 's' : ''} for the {year} {make} {model}. {data.reliabilityScore.recallCount > 0 ? 'Check the Safety tab for details and ensure any necessary repairs have been completed.' : 'This is a good sign for this model year.'}
+                            </div>
+                        </details>
+                    </div>
+                </div>
+            </section>
+
+            {/* Print Data Sources */}
+            <div className="max-w-6xl mx-auto px-6">
+                <PrintDataSources />
+            </div>
 
             {/* Footer */}
             <footer className="border-t border-border py-6 px-6 mt-12 bg-muted/30">
@@ -803,6 +902,9 @@ export default function VehiclePage() {
                     </div>
                 </div>
             </footer>
+
+            {/* Print Footer */}
+            <PrintFooter />
         </div>
     );
 }

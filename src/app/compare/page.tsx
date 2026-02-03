@@ -232,7 +232,7 @@ export default function ComparePage() {
                                 <div key={i} className="bg-card border rounded-xl p-6 text-center">
                                     <h3 className="font-bold text-lg mb-2">{v.year} {v.make} {v.model}</h3>
                                     <div className="flex justify-center mb-3">
-                                        <ScoreGauge score={v.reliabilityScore} size={100} />
+                                        <ScoreGauge score={v.reliabilityScore} size="lg" />
                                     </div>
                                     <span className={cn(
                                         'px-3 py-1 rounded-full text-xs font-bold',

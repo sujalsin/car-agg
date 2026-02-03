@@ -4,6 +4,13 @@ import { getVehicles, getRealWorldMPG, getFuelPrices } from '@/services/epa';
 import { calculateReliabilityScore } from '@/lib/reliability-score';
 import { calculateOwnershipCost } from '@/lib/ownership-cost';
 import { aggregateCommonProblems, generateProsAndCons } from '@/lib/common-problems';
+import { 
+    checkRateLimit, 
+    getRateLimitHeaders, 
+    createRateLimitResponse,
+    getClientIP,
+    RATE_LIMITS 
+} from '@/lib/rate-limit';
 
 interface CompareVehicle {
     year: number;
@@ -12,6 +19,15 @@ interface CompareVehicle {
 }
 
 export async function POST(request: NextRequest) {
+    // Check rate limit
+    const clientIP = getClientIP(request);
+    const rateLimitKey = `compare:${clientIP}`;
+    const rateLimitResult = checkRateLimit(rateLimitKey, RATE_LIMITS.compare);
+    
+    if (!rateLimitResult.allowed) {
+        return createRateLimitResponse(rateLimitResult.resetTime);
+    }
+
     try {
         const body = await request.json();
         const vehicles: CompareVehicle[] = body.vehicles;
@@ -19,7 +35,14 @@ export async function POST(request: NextRequest) {
         if (!vehicles || !Array.isArray(vehicles) || vehicles.length < 2 || vehicles.length > 3) {
             return NextResponse.json(
                 { error: 'Please provide 2-3 vehicles to compare' },
-                { status: 400 }
+                { 
+                    status: 400,
+                    headers: getRateLimitHeaders(
+                        RATE_LIMITS.compare.limit,
+                        rateLimitResult.remaining,
+                        rateLimitResult.resetTime
+                    ),
+                }
             );
         }
 
@@ -55,11 +78,12 @@ export async function POST(request: NextRequest) {
                 if (combinedMpg) {
                     ownershipCost = calculateOwnershipCost(
                         {
-                            msrp: 30000,
                             combinedMpg,
                             fuelType: fuelType.toLowerCase().includes('premium') ? 'premium' : 'regular',
                             vehicleClass: epaVehicles[0]?.VClass || 'Midsize Cars',
                             year: v.year,
+                            make: normalizedMake,
+                            model: v.model,
                             complaintRate: (complaints.length / 50000) * 10000,
                         },
                         fuelPrices
@@ -100,12 +124,25 @@ export async function POST(request: NextRequest) {
             success: true,
             vehicles: vehicleData,
             comparedAt: new Date().toISOString(),
+        }, {
+            headers: getRateLimitHeaders(
+                RATE_LIMITS.compare.limit,
+                rateLimitResult.remaining,
+                rateLimitResult.resetTime
+            ),
         });
     } catch (error) {
         console.error('Comparison error:', error);
         return NextResponse.json(
             { error: 'Failed to compare vehicles' },
-            { status: 500 }
+            { 
+                status: 500,
+                headers: getRateLimitHeaders(
+                    RATE_LIMITS.compare.limit,
+                    rateLimitResult.remaining,
+                    rateLimitResult.resetTime
+                ),
+            }
         );
     }
 }
